@@ -1,5 +1,5 @@
 {
-  "name": "video-extractor",
+  "name": "egydead-extractor",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -11,4 +11,3 @@
     "axios": "^1.6.0"
   }
 }
-

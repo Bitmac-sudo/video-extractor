@@ -1,82 +1,74 @@
 const puppeteer = require('puppeteer');
 const axios = require('axios');
 const express = require('express');
-
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// المعلومات التي قدمتها لي تم وضعها هنا مباشرة
-const TELEGRAM_TOKEN = 'ضع_هنا_التوكن_الذي_أخذته_من_BotFather'; // استبدل هذا السطر بالتوكن الطويل من BotFather
-const CHAT_ID = '1544455907'; // هويتك الرقمية يا فهد
+// المتغيرات (سيتم جلبها تلقائياً من Render)
+const token = process.env.TELEGRAM_TOKEN;
+const chatId = process.env.CHAT_ID;
 
-async function sendToTelegram(message) {
-    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-    try {
-        await axios.post(url, {
-            chat_id: CHAT_ID,
-            text: message,
-            parse_mode: 'HTML'
-        });
-        console.log("✅ أرسلت لك الروابط على تلغرام يا فهد.");
-    } catch (error) {
-        console.error("❌ مشكلة في الإرسال:", error.message);
-    }
-}
-
-async function startScraping() {
-    console.log("🔍 فهد، أنا الآن أبحث في ايجي ديد...");
+async function scrapeEgyDead() {
+    console.log("جاري بدء عملية الجلب من ايجي ديد...");
     let browser;
     try {
         browser = await puppeteer.launch({
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         const page = await browser.newPage();
-
-        // التوجه لقسم الكرتون
-        await page.goto('https://egydead.media/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%83%d8%b1%d8%tu%d9%86/', {
+        
+        // الرابط الذي طلبته (قسم أفلام الكرتون)
+        await page.goto('https://egydead.media/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%83%d8%b1%d8%aa%d9%88%d9%86/', { 
             waitUntil: 'networkidle2',
-            timeout: 60000
+            timeout: 60000 
         });
 
-        const movieLink = await page.evaluate(() => document.querySelector('.movieItem a')?.href);
-
-        if (movieLink) {
-            await page.goto(movieLink, { waitUntil: 'domcontentloaded' });
-
-            const videoData = await page.evaluate(() => {
-                const title = document.querySelector('h1')?.innerText || "فيلم غير مسمى";
-                const frames = Array.from(document.querySelectorAll('iframe'))
-                                    .map(f => f.src)
-                                    .filter(src => src.startsWith('http'));
-                return { title, frames };
+        // استخراج البيانات بناءً على كود HTML الموقع
+        const movies = await page.evaluate(() => {
+            let results = [];
+            let items = document.querySelectorAll('.movieItem');
+            items.forEach((item) => {
+                let title = item.querySelector('h1.BottomTitle')?.innerText;
+                let link = item.querySelector('a')?.href;
+                let img = item.querySelector('img')?.src;
+                if (title && link) {
+                    results.push({ title, link, img });
+                }
             });
+            return results;
+        });
 
-            if (videoData.frames.length > 0) {
-                let report = `<b>🎬 فهد، استخرجت لك روابط جديدة:</b>\n`;
-                report += `<b>📌 الفيلم:</b> ${videoData.title}\n\n`;
-                
-                videoData.frames.forEach((link, index) => {
-                    report += `✅ سيرفر ${index + 1}: ${link}\n\n`;
-                });
+        console.log(`تم العثور على ${movies.length} فيلم.`);
 
-                await sendToTelegram(report);
-            }
+        // إرسال الأفلام للبوت
+        for (let movie of movies) {
+            const message = `🎬 *الفيلم:* ${movie.title}\n\n🔗 *الرابط:* ${movie.link}`;
+            
+            // إرسال الصورة مع الرابط
+            await axios.post(`https://api.telegram.org/bot${token}/sendPhoto`, {
+                chat_id: chatId,
+                photo: movie.img,
+                caption: message,
+                parse_mode: 'Markdown'
+            }).catch(err => console.log("خطأ في إرسال فيلم معين"));
+            
+            // تأخير بسيط لتجنب حظر التلجرام (Flood)
+            await new Promise(r => setTimeout(r, 1000));
         }
-    } catch (err) {
-        console.error("❌ خطأ:", err.message);
+
+    } catch (error) {
+        console.error("حدث خطأ أثناء الجلب:", error.message);
     } finally {
         if (browser) await browser.close();
     }
 }
 
-app.get('/', (req, res) => {
-    res.send('<h1>سيرفر فهد يعمل الآن!</h1>');
+// تشغيل السيرفر لضمان بقاء الخدمة تعمل على Render
+app.get('/', (req, res) => res.send('بوت جلب الأفلام يعمل بنجاح!'));
+app.listen(process.env.PORT || 3000, () => {
+    console.log("السيرفر جاهز...");
+    // تشغيل الجلب فور تشغيل السيرفر
+    scrapeEgyDead();
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 السيرفر شغال يا فهد على منفذ: ${PORT}`);
-    startScraping();
-    // يفحص كل 30 دقيقة
-    setInterval(startScraping, 30 * 60 * 1000);
-});
-
+// تكرار العملية كل 6 ساعات لجلب الجديد
+setInterval(scrapeEgyDead, 6 * 60 * 60 * 1000);

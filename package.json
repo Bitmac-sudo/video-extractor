@@ -1,7 +1,6 @@
 {
   "name": "video-extractor",
   "version": "1.0.0",
-  "description": "استخراج روابط الفيديو تلقائياً",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
